@@ -1,6 +1,6 @@
 import requests
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import schedule
 
@@ -43,7 +43,7 @@ def save_to_db(conn, symbol, bid_volume, ask_volume, imbalance):
         cursor.execute("""
             INSERT INTO market_pressure (time, symbol, bid_volume, ask_volume, imbalance)
             VALUES (?, ?, ?, ?, ?)
-        """, (datetime.utcnow().isoformat(), symbol, bid_volume, ask_volume, imbalance))
+        """, (datetime.now(timezone.utc).isoformat(), symbol, bid_volume, ask_volume, imbalance))
         conn.commit()
         cursor.close()
         print(f"Данные для {symbol} успешно сохранены.")
@@ -108,7 +108,7 @@ def analyze_and_save_data():
     conn.close()
 
 # Запуск задачи каждый час
-schedule.every().hour.at(":00").do(analyze_and_save_data)
+schedule.every().minute.at(":00").do(analyze_and_save_data)
 
 # Основной цикл
 if __name__ == "__main__":
@@ -116,3 +116,4 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
+
