@@ -1,17 +1,16 @@
 import requests
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import schedule
 import pytz
 import asyncio
 from aiogram import Bot
-from configs import BOT_TOKEN, DATABASE_NAME
+from configs import BOT_TOKEN, DATABASE_NAME  # Импортируем настройки из configs.py
 
 # Настройки SQLite
 DB_NAME = DATABASE_NAME
-BOT_TOKEN = BOT_TOKEN  # Замените на ваш токен
-
+BOT_TOKEN = BOT_TOKEN
 
 # Функция для подключения к SQLite
 def connect_to_db():
@@ -44,6 +43,12 @@ def create_tables_if_not_exist(conn):
                 total_bid_volume REAL,
                 total_ask_volume REAL,
                 total_dizbalance REAL
+            );
+        """)
+        # Таблица для пользователей
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                chat_id INTEGER PRIMARY KEY
             );
         """)
         conn.commit()
@@ -117,16 +122,35 @@ def analyze_order_book(order_book):
     dizbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume) * 100
     return total_bid_volume, total_ask_volume, dizbalance
 
-# Функция для отправки уведомлений
-async def send_notification(bot_token, chat_id, message):
-    bot = Bot(token=bot_token)
+# Функция для получения всех CHAT_ID из базы данных
+def get_all_chat_ids():
+    conn = connect_to_db()
+    if not conn:
+        return []
     try:
-        await bot.send_message(chat_id=chat_id, text=message)
-        print(f"Уведомление отправлено: {message}")
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT chat_id FROM users
+        """)
+        chat_ids = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        conn.close()
+        return chat_ids
     except Exception as e:
-        print(f"Ошибка при отправке уведомления: {e}")
-    finally:
-        await bot.session.close()
+        print(f"Ошибка при получении CHAT_ID: {e}")
+        return []
+
+# Функция для отправки уведомлений всем пользователям
+async def send_notifications_to_all(bot_token, message):
+    bot = Bot(token=bot_token)
+    chat_ids = get_all_chat_ids()  # Получаем все CHAT_ID
+    for chat_id in chat_ids:
+        try:
+            await bot.send_message(chat_id=chat_id, text=message)
+            print(f"Уведомление отправлено пользователю с CHAT_ID {chat_id}")
+        except Exception as e:
+            print(f"Ошибка при отправке уведомления пользователю с CHAT_ID {chat_id}: {e}")
+    await bot.session.close()
 
 # Функция для анализа и сохранения данных
 def analyze_and_save_data():
@@ -182,8 +206,9 @@ def analyze_and_save_data():
                 f"  Общий дисбаланс: {total_dizbalance:.2f}%"
             )
 
-            # Отправляем уведомление в Telegram
-            asyncio.run(send_notification(BOT_TOKEN, CHAT_ID, notification_message))
+            # Отправляем уведомление всем пользователям
+            import asyncio
+            asyncio.run(send_notifications_to_all(BOT_TOKEN, notification_message))
         else:
             print("Агрегированные данные отсутствуют.")
         cursor.close()
@@ -193,7 +218,7 @@ def analyze_and_save_data():
     conn.close()
 
 # Запуск задачи каждые 5 минут
-schedule.every(5).minutes.do(analyze_and_save_data)
+schedule.every(1).minutes.do(analyze_and_save_data)
 
 # Основной цикл
 if __name__ == "__main__":
