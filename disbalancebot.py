@@ -21,9 +21,6 @@ import logging
 import asyncio
 from logging.handlers import RotatingFileHandler
 import sqlite3
-import matplotlib.pyplot as plt
-from matplotlib.dates import DateFormatter
-import matplotlib.dates as mdates
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -48,7 +45,7 @@ class PinCodeState(StatesGroup):
     incorrect_pin = State()  # Неверный пин-код
     blocked = State()  # Блокировка
 
-# Функция для создания клавиатуры с пин-кодом
+# Функция для создания клавиатуры с пин-кодом и кнопкой "готово"
 def get_pin_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -69,7 +66,7 @@ def get_pin_keyboard():
             ],
             [
                 InlineKeyboardButton(text="0", callback_data="pin_0"),
-                InlineKeyboardButton(text="", callback_data="pin_done"),
+                InlineKeyboardButton(text="Готово", callback_data="pin_done"),
             ],
         ]
     )
@@ -283,7 +280,6 @@ def create_excel_report(symbol=None):
         logger.error(f"Ошибка создания Excel отчета: {e}")
         return None
 
-
 # Функция для создания PNG отчета
 def create_png_report(symbol=None):
     conn = connect_to_db()
@@ -318,18 +314,17 @@ def create_png_report(symbol=None):
         cursor.close()
         conn.close()
         data = data[::-1]
-        times = [datetime.strptime(row[0][:19], "%Y-%m-%dT%H:%M:%S") for row in data]
+        times = [
+            datetime.strptime(row[0][:19], "%Y-%m-%dT%H:%M:%S") for row in data
+        ]
         dizbalances = [row[1] for row in data]
-
         plt.figure(figsize=(10, 5))
-        plt.bar(times, dizbalances, color="#FF6B6B")  # Используем веселый красный цвет
+        width = 0.8 / 48  # Уменьшаем ширину столбиков, чтобы они соответствовали каждой записи в базе данных
+        plt.bar(times, dizbalances, color="#FF6B6B", width=width, edgecolor='black')  # Добавляем рамки вокруг столбиков
         plt.xlabel("")
         plt.ylabel("")
-
-        # Настройка формата горизонтальной шкалы
         plt.gca().xaxis.set_major_formatter(DateFormatter("%d.%m"))
         plt.gca().xaxis.set_major_locator(mdates.HourLocator(interval=24))  # Показывать только каждый день в 3 часа ночи
-
         plt.title("Dizbalance за последние 30 дней")
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -354,7 +349,7 @@ def create_pdf_report(symbol=None):
                 SELECT time, dizbalance
                 FROM market_pressure
                 WHERE symbol = ?
-                ORDER BY time DESC
+                ORDER by time DESC
                 LIMIT 3000
                 """,
                 (symbol,),
@@ -366,7 +361,7 @@ def create_pdf_report(symbol=None):
                 """
                 SELECT time, total_dizbalance
                 FROM market_summary
-                ORDER BY time DESC
+                ORDER by time DESC
                 LIMIT 3000
                 """
             )
@@ -375,18 +370,17 @@ def create_pdf_report(symbol=None):
         cursor.close()
         conn.close()
         data = data[::-1]
-        times = [datetime.strptime(row[0][:19], "%Y-%m-%dT%H:%M:%S") for row in data]
+        times = [
+            datetime.strptime(row[0][:19], "%Y-%m-%dT%H:%M:%S") for row in data
+        ]
         dizbalances = [row[1] for row in data]
-
         plt.figure(figsize=(10, 5))
-        plt.bar(times, dizbalances, color="#4ECDC4")  # Используем веселый голубой цвет
+        width = 0.8 / 48  # Уменьшаем ширину столбиков, чтобы они соответствовали каждой записи в базе данных
+        plt.bar(times, dizbalances, color="#4ECDC4", width=width, edgecolor='black')  # Добавляем рамки вокруг столбиков
         plt.xlabel("")
         plt.ylabel("")
-
-        # Настройка формата горизонтальной шкалы
         plt.gca().xaxis.set_major_formatter(DateFormatter("%d.%m"))
         plt.gca().xaxis.set_major_locator(mdates.HourLocator(interval=24))  # Показывать только каждый день в 3 часа ночи
-
         plt.title("Dizbalance за последние 30 дней")
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -394,7 +388,7 @@ def create_pdf_report(symbol=None):
         with PdfPages(pdf_file) as pdf_pages:
             pdf_pages.savefig()
         plt.close()
-        return pdf_file
+        return pdf_report
     except Exception as e:
         logger.error(f"Ошибка создания PDF отчета: {e}")
         return None
@@ -451,6 +445,7 @@ async def handle_pin_digit(callback: CallbackQuery, state: FSMContext):
                     f"❌ Неверный пин-код. Осталось попыток: {3 - attempts}",
                     reply_markup=get_pin_keyboard(),
                 )
+                await state.update_data(pin_buffer="")  # Сброс пин-кода
         else:
             pin_buffer += action
             await state.update_data(pin_buffer=pin_buffer)
@@ -493,7 +488,7 @@ async def show_market_summary(callback: CallbackQuery):
             f"Время: {datetime.strptime(time_str[:19], '%Y-%m-%dT%H:%M:%S').strftime('%Y.%m.%d %H:%M')}\n"
             f"Общий объем заявок на покупку: {total_bid_volume:.2f}\n"
             f"Общий объем заявок на продажу: {total_ask_volume:.2f}\n"
-            f"Дисбаланс: {total_dizbalance:.2f}%"
+            f"Дизбаланс: {total_dizbalance:.2f}%"
         )
     else:
         response = "❌ Не удалось получить данные."
@@ -510,7 +505,7 @@ async def request_coin_ticker(callback: CallbackQuery):
     await callback.message.answer("Введите тикер монеты (например, BTCUSDT):")
 
 # Обработчик ввода тикера монеты
-@dp.message(lambda message: message.text.isalnum() ) # and len(message.text) >= 6)
+@dp.message(lambda message: message.text.isalnum() and len(message.text) >= 6)
 async def show_coin_data(message: Message):
     if not is_user_authorized(message.chat.id):
         await message.answer("❌ Вы не авторизованы. Нажмите /start.")
@@ -593,13 +588,15 @@ async def generate_report(callback: CallbackQuery):
     elif callback.data.startswith("png_report_"):
         symbol = callback.data.split("_")[2]
         png_file = create_png_report(symbol)
-        if png_file:
+        if png_buffer == "":
+            await callback.message.answer(f"❌ Не удалось создать PNG отчет по {symbol}."
+            )
+        else:
+            await callback.message.answer(f"✅ PNG отчет по {symbol} сформирован."
+            )
             await callback.message.answer_photo(
                 FSInputFile(png_file),
                 caption=f"✅ PNG отчет по {symbol} сформирован."
-            )
-        else:
-            await callback.message.answer(f"❌ Не удалось создать PNG отчет по {symbol}."
             )
 
 # Функция для создания клавиатуры с кнопками для генерации отчетов
@@ -608,9 +605,9 @@ def get_report_keyboard(symbol=None):
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="Отчет Excel", callback_data=f"excel_report_{symbol}"),
-                    InlineKeyboardButton(text="Отчет pdf", callback_data=f"pdf_report_{symbol}"),
-                    InlineKeyboardButton(text="Отчет png", callback_data=f"png_report_{symbol}"),
+                    InlineKeyboardButton(text="Excel", callback_data=f"excel_report_{symbol}"),
+                    InlineKeyboardButton(text="pdf", callback_data=f"pdf_report_{symbol}"),
+                    InlineKeyboardButton(text="png", callback_data=f"png_report_{symbol}"),
                 ],
             ]
         )
@@ -618,9 +615,9 @@ def get_report_keyboard(symbol=None):
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="Отчет Excel", callback_data="excel_report"),
-                    InlineKeyboardButton(text="Отчет pdf", callback_data="pdf_report"),
-                    InlineKeyboardButton(text="Отчет png", callback_data="png_report"),
+                    InlineKeyboardButton(text="Excel", callback_data="excel_report"),
+                    InlineKeyboardButton(text="pdf", callback_data="pdf_report"),
+                    InlineKeyboardButton(text="png", callback_data="png_report"),
                 ],
             ]
         )
