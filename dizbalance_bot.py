@@ -4,17 +4,19 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, C
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from configs import BOT_TOKEN, DATABASE_NAME, PIN_CODE  # Импортируем настройки из configs.py
+from configs import BOT_TOKEN, DATABASE_NAME #, PIN_CODE  # Импортируем настройки из configs.py
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from PIL import Image
 from datetime import datetime
+from configs import PIN_CODE_HASH  # Импортируем хеш из configs.py
+import bcrypt
 
 # Настройки бота
 API_TOKEN = BOT_TOKEN  # Замените на ваш токен
 DB_NAME = DATABASE_NAME
-PIN = str(PIN_CODE)  # Преобразуем пин-код в строку для корректного сравнения
+#PIN = str(PIN_CODE)  # Преобразуем пин-код в строку для корректного сравнения
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
@@ -306,7 +308,8 @@ async def handle_pin_digit(callback: CallbackQuery, state: FSMContext):
     if callback.data.startswith("pin_"):
         action = callback.data.split("_")[1]
         if action == "done":  # Если нажата кнопка "Готово"
-            if len(pin_buffer) == 4 and pin_buffer == PIN:  # Проверяем пин-код
+            #if len(pin_buffer) == 4 and pin_buffer == PIN:  # Проверяем пин-код
+            if len(pin_buffer) == 4 and bcrypt.checkpw(pin_buffer.encode(), PIN_CODE_HASH.encode()):
                 chat_id = callback.message.chat.id
                 if save_chat_id(chat_id):
                     await callback.message.answer(
@@ -389,6 +392,9 @@ async def show_coin_data(message: Message):
         return
 
     symbol = message.text.upper()
+    if not symbol.endswith("USDT"):  # Пример дополнительной проверки
+        await message.answer("Тикер должен быть в формате BTCUSDT.")
+        return
     latest_data = get_latest_coin_data(symbol)
     if latest_data:
         time_str, bid_volume, ask_volume, dizbalance = latest_data
