@@ -217,8 +217,8 @@ def analyze_and_save_data():
 
     conn.close()
 
-# Запуск задачи каждые 5 минут
-schedule.every(1).minutes.do(analyze_and_save_data)
+# Запуск задачи каждые 15 минут
+schedule.every(15).minutes.do(analyze_and_save_data)
 
 # Основной цикл
 if __name__ == "__main__":

@@ -161,4 +161,4 @@ cython_debug/
 .env
 .env
 *.log
-dizbalance_bot.py
+todel/dizbalance_bot.py
